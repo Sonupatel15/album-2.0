@@ -1,9 +1,9 @@
 import os
-import face_recognition
 import numpy as np
 from PIL import Image
 import shutil
 import uuid
+from deepface import DeepFace
 
 def save_image(uploaded_file, username):
     user_folder = os.path.join("image_store", username)
@@ -30,35 +30,27 @@ def get_all_images(base_folder):
                 all_data[user] = image_paths
     return all_data
 
-def get_face_encodings(image_path):
-    try:
-        image = face_recognition.load_image_file(image_path)
-        encodings = face_recognition.face_encodings(image)
-        return encodings
-    except Exception:
-        return []
-
-def find_matching_images(search_image_file, base_folder, tolerance=0.6):
-    try:
-        search_img = face_recognition.load_image_file(search_image_file)
-        search_encodings = face_recognition.face_encodings(search_img)
-        if not search_encodings:
-            return []
-        search_encoding = search_encodings[0]
-    except Exception:
-        return []
-
+def find_matching_images(search_image_file, base_folder, model_name="VGG-Face", threshold=0.6):
     matching_images = []
+
+    # Save uploaded file temporarily
+    temp_path = "temp_search.jpg"
+    with open(temp_path, "wb") as f:
+        f.write(search_image_file.read())
+
     for user in os.listdir(base_folder):
         user_folder = os.path.join(base_folder, user)
         if os.path.isdir(user_folder):
             for fname in os.listdir(user_folder):
                 if fname.lower().endswith(("jpg", "jpeg", "png")):
                     img_path = os.path.join(user_folder, fname)
-                    encodings = get_face_encodings(img_path)
-                    for face_encoding in encodings:
-                        match = face_recognition.compare_faces([search_encoding], face_encoding, tolerance=tolerance)
-                        if match[0]:
+                    try:
+                        result = DeepFace.verify(temp_path, img_path, model_name=model_name, enforce_detection=False)
+                        if result["verified"] and result["distance"] <= threshold:
                             matching_images.append(img_path)
-                            break
+                    except Exception as e:
+                        print(f"Error comparing {img_path}: {e}")
+                        continue
+
+    os.remove(temp_path)
     return matching_images
